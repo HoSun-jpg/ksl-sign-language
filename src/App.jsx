@@ -16,9 +16,11 @@ export default function App() {
   const [dbError, setDbError] = useState('');
 
   const prevHandYRef = useRef(null);
+  const prevNiceHandYRef = useRef(null);
+  const lastNiceDirRef = useRef(null);
   const clearTimerRef = useRef(null);
 
-  // 1. Supabase DB에서 수어 데이터 로드
+  // 1. Supabase DB 데이터 로드
   useEffect(() => {
     const fetchGestures = async () => {
       try {
@@ -75,13 +77,29 @@ export default function App() {
     }
   };
 
-  // --- 공통 랜드마크 계산 헬퍼 함수들 ---
   const isFourFingersClosed = (lm) => {
     return lm[8].y > lm[6].y && lm[12].y > lm[10].y && lm[16].y > lm[14].y && lm[20].y > lm[18].y;
   };
 
   const isFlatHand = (lm) => {
     return lm[8].y < lm[5].y && lm[12].y < lm[9].y && lm[16].y < lm[13].y && lm[20].y < lm[17].y;
+  };
+
+  // 90도 눕힌 손 (살짝 구부린 상태 + 손등이 앞을 향함) 판별
+  const isHorizontalHand = (lm) => {
+    if (isFourFingersClosed(lm)) return false;
+    const dx = Math.abs(lm[8].x - lm[5].x);
+    const dy = Math.abs(lm[8].y - lm[5].y);
+    return dx > dy * 0.7;
+  };
+
+  // 새끼손가락만 펴진 상태 판별
+  const isPinkyOnly = (lm) => {
+    const isPinkyExtended = lm[20].y < lm[18].y;
+    const isIndexClosed = lm[8].y > lm[6].y;
+    const isMiddleClosed = lm[12].y > lm[10].y;
+    const isRingClosed = lm[16].y > lm[14].y;
+    return isPinkyExtended && isIndexClosed && isMiddleClosed && isRingClosed;
   };
 
   const isMiddleFingerOnly = (lm) => {
@@ -113,8 +131,10 @@ export default function App() {
 
   // --- 수어 동작 분류 엔진 ---
   const classifySignLanguage = (handsLandmarks) => {
-    if (!handsLandmarks || handsLandmarks.length === 0 || gesturesList.length === 0) {
+    if (!handsLandmarks || handsLandmarks.length === 0) {
       prevHandYRef.current = null;
+      prevNiceHandYRef.current = null;
+      lastNiceDirRef.current = null;
       return null;
     }
 
@@ -137,72 +157,108 @@ export default function App() {
         hand1[0].y - hand2[0].y
       );
 
-      // ① [최고입니다!] - 양손 엄지 척 (양손 따봉)
+      // ① [최고입니다!] - 양손 엄지 척
       if (h1ThumbUp && h2ThumbUp) {
         const rule = getDbRule('double_thumbs_up');
-        if (rule) return { text: rule.text, gesture: rule.gesture_name };
+        return { text: rule?.text || '최고입니다!', gesture: rule?.gesture_name || '양손 엄지 척' };
       }
 
-      // ② [안녕하세요!] - 두 주먹을 쥔 채 아래로 내림
-      if (h1Closed && h2Closed && !h1ThumbUp && !h2ThumbUp) {
-        const currentY = (hand1[0].y + hand2[0].y) / 2;
-        if (prevHandYRef.current !== null) {
-          const deltaY = currentY - prevHandYRef.current;
-          if (deltaY > 0.015) {
-            const rule = getDbRule('hello');
-            if (rule) return { text: rule.text, gesture: rule.gesture_name };
+      // ② [반갑습니다!] - 90도 눕히고 살짝 구부린 손으로 위아래 흔들기
+      const avgY = (hand1[0].y + hand2[0].y) / 2;
+      const h1Horizontal = isHorizontalHand(hand1);
+      const h2Horizontal = isHorizontalHand(hand2);
+
+      if ((h1Horizontal || h2Horizontal) && wristDistance < 0.7) {
+        if (prevNiceHandYRef.current !== null) {
+          const deltaY = avgY - prevNiceHandYRef.current;
+
+          if (Math.abs(deltaY) > 0.005) {
+            const currentDir = deltaY > 0 ? 'down' : 'up';
+            
+            if (lastNiceDirRef.current && lastNiceDirRef.current !== currentDir) {
+              const rule = getDbRule('nice_to_meet_you');
+              return { text: rule?.text || '반갑습니다!', gesture: rule?.gesture_name || '양손 눕혀 흔들기' };
+            }
+            lastNiceDirRef.current = currentDir;
           }
         }
-        prevHandYRef.current = currentY;
+        prevNiceHandYRef.current = avgY;
+      } else {
+        prevNiceHandYRef.current = null;
+        lastNiceDirRef.current = null;
+      }
+
+      // ③ [안녕하세요!] - 두 주먹을 쥔 채 아래로 내림
+      if (h1Closed && h2Closed && !h1ThumbUp && !h2ThumbUp) {
+        if (prevHandYRef.current !== null) {
+          const deltaY = avgY - prevHandYRef.current;
+          if (deltaY > 0.015) {
+            const rule = getDbRule('hello');
+            return { text: rule?.text || '안녕하세요!', gesture: rule?.gesture_name || '두 주먹 내리기' };
+          }
+        }
+        prevHandYRef.current = avgY;
       } else {
         prevHandYRef.current = null;
       }
 
-      // 두 손이 가까이 위치할 때 (거리 0.32 이하)
+      // 두 손이 가깝게 위치할 때 (거리 0.32 이하)
       if (wristDistance < 0.32) {
-        // ③ [사랑합니다!] - 한 손은 완전 주먹 + 다른 손은 손바닥이 펴짐
+        // ④ [사랑합니다!] - 한 손 주먹 + 한 손 펴짐
         const isLoveGesture = (h1Closed && !h2Closed) || (h2Closed && !h1Closed);
         if (isLoveGesture) {
           const rule = getDbRule('love');
-          if (rule) return { text: rule.text, gesture: rule.gesture_name };
+          return { text: rule?.text || '사랑합니다!', gesture: rule?.gesture_name || '주먹+손바닥' };
         }
 
-        // ④ [감사합니다!] - 양손 모두 주먹이 아니고, 두 손바닥이 마주보거나 포개짐
+        // ⑤ [감사합니다!] - 두 손바닥이 마주보거나 거의 붙어있을 때
         const noOneIsFist = !h1Closed && !h2Closed;
         const isThanksGesture = noOneIsFist && (h1Flat || h2Flat || wristDistance < 0.22);
         if (isThanksGesture) {
           const rule = getDbRule('thanks');
-          if (rule) return { text: rule.text, gesture: rule.gesture_name };
+          return { text: rule?.text || '감사합니다!', gesture: rule?.gesture_name || '양 손바닥 맞대기' };
         }
       }
     } else {
       prevHandYRef.current = null;
+      prevNiceHandYRef.current = null;
+      lastNiceDirRef.current = null;
     }
 
     // 2. [한 손 동작 처리]
     if (handCount === 1) {
       const hand = handsLandmarks[0];
       const wristY = hand[0].y;
+      const pinkyTipY = hand[20].y;
       const extendedCount = countExtendedFingers(hand);
 
-      // ① [산] - 중지만 세우기
+      // ① [괜찮아 / 괜찮습니다] - 새끼손가락만 펴서 턱 근처(Y축 0.25~0.65 위치)에 가져가기
+      if (isPinkyOnly(hand) && pinkyTipY > 0.2 && pinkyTipY < 0.65) {
+        const rule = getDbRule('fine') || getDbRule('okay') || getDbRule('fine_to_be_ok');
+        return { 
+          text: rule?.text || '괜찮아', 
+          gesture: rule?.gesture_name || '새끼손가락 턱에 대기' 
+        };
+      }
+
+      // ② [산] - 중지만 세우기
       if (isMiddleFingerOnly(hand)) {
         const rule = getDbRule('mountain');
-        if (rule) return { text: rule.text, gesture: rule.gesture_name };
+        return { text: rule?.text || '산', gesture: rule?.gesture_name || '중지 세우기' };
       }
 
-      // ② [좋습니다!] - 한 손 엄지 척
+      // ③ [좋습니다!] - 한 손 엄지 척
       if (isThumbUp(hand)) {
         const rule = getDbRule('like');
-        if (rule) return { text: rule.text, gesture: rule.gesture_name };
+        return { text: rule?.text || '좋습니다!', gesture: rule?.gesture_name || '한 손 엄지 척' };
       }
 
-      // ③ [미안합니다!] - 이마 부근(Y < 0.58) + OK 모양 또는 손가락 모으기
+      // ④ [미안합니다!] - 이마 부근 + OK / 주먹 모양
       const ruleSorry = getDbRule('sorry');
       const maxWristY = ruleSorry ? ruleSorry.max_wrist_y : 0.58;
       
       if (wristY < maxWristY && (isOkShape(hand) || extendedCount <= 3 || isFourFingersClosed(hand))) {
-        if (ruleSorry) return { text: ruleSorry.text, gesture: ruleSorry.gesture_name };
+        return { text: ruleSorry?.text || '미안합니다!', gesture: ruleSorry?.gesture_name || '이마에 손대기' };
       }
     }
 
@@ -241,7 +297,7 @@ export default function App() {
           clearTimerRef.current = setTimeout(() => {
             setDetectedText('');
             setDetectedGestureName('');
-          }, 1200);
+          }, 1500);
         }
       }
     }
@@ -301,7 +357,7 @@ export default function App() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px', color: '#38bdf8', fontWeight: 'bold' }}>
           <Database size={14} /> DB 연동 완료: 총 {gesturesList.length}개 동작 등록됨
         </div>
-        • [최고입니다] ➔ 양손 엄지 | [안녕하세요] ➔ 주먹 내리기 | [사랑합니다] ➔ 손 비비기 | [감사합니다] ➔ 손 포개기
+        • [괜찮아] ➔ 새끼손가락만 펴서 턱 끝 근처에 가져다 대기
       </div>
     </div>
   );
