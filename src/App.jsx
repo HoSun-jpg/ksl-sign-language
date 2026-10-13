@@ -1,10 +1,11 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
-import { Camera, Hand, MessageSquare, Video, Database, Send, CheckCircle, Star } from 'lucide-react';
+import { Camera, Hand, MessageSquare, Video, Database, Send, CheckCircle, Star, Lock } from 'lucide-react';
 import { supabase } from './supabaseClient';
+import AdminFeedback from './AdminFeedback';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('detector'); // 'detector' 또는 'feedback'
+  const [activeTab, setActiveTab] = useState('detector'); // 'detector', 'feedback', 'admin'
   
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -24,6 +25,20 @@ export default function App() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
+  // 관리자 모드 상태
+  const [adminPassword, setAdminPassword] = useState('');
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  const [feedbackList, setFeedbackList] = useState([]);
+  const [isLoadingFeedback, setIsLoadingFeedback] = useState(false);
+
+  // 다른 탭으로 이동하면 관리자 모드 자동 잠금
+  useEffect(() => {
+    if (activeTab !== 'admin') {
+      setIsAdminAuthenticated(false);
+      setAdminPassword('');
+    }
+  }, [activeTab]);
+
   const prevHandYRef = useRef(null);
   const prevNiceHandYRef = useRef(null);
   const lastNiceDirRef = useRef(null);
@@ -32,7 +47,7 @@ export default function App() {
   const prevMiddleYRef = useRef(null);
   const clearTimerRef = useRef(null);
 
-  // 1. Supabase DB 데이터 로드
+  // 1. Supabase DB 데이터 로드 (수어 동작)
   useEffect(() => {
     const fetchGestures = async () => {
       try {
@@ -78,7 +93,9 @@ export default function App() {
 
   const startCamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { width: { ideal: 1280 }, height: { ideal: 720 } } 
+      });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.addEventListener('loadeddata', predictWebcam);
@@ -196,7 +213,6 @@ export default function App() {
       const wristDistance = Math.hypot(hand1[0].x - hand2[0].x, hand1[0].y - hand2[0].y);
       const avgY = (hand1[0].y + hand2[0].y) / 2;
 
-      // ① [강아지]
       const h1NearHead = hand1[0].y < 0.48;
       const h2NearHead = hand2[0].y < 0.48;
       const h1Open = countExtendedFingers(hand1) >= 3;
@@ -320,7 +336,7 @@ export default function App() {
         prevMiddleYRef.current = middleTip.y;
 
         const rule = getDbRule('mountain');
-        return { text: rule?.text || '산', gesture: rule?.gesture_name || '중지 세우기' };
+        return { text: rule?.text || '산', gesture: rule?.gesture_name || '중지 세기' };
       } else {
         prevMiddleYRef.current = null;
       }
@@ -409,73 +425,80 @@ export default function App() {
   };
 
   return (
-    <div style={{ width: '100%', minHeight: '100vh', backgroundColor: '#ffffff', color: '#1e293b', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '16px', fontFamily: 'sans-serif', boxSizing: 'border-box' }}>
+    <div style={{ width: '100%', minHeight: '100vh', backgroundColor: '#ffffff', color: '#1e293b', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '16px 20px', fontFamily: 'sans-serif', boxSizing: 'border-box' }}>
       
-      {/* 상단 헤더 및 탭 전환 버튼 */}
-      <header style={{ textAlign: 'center', marginBottom: '10px', width: '100%', maxWidth: '520px' }}>
+      {/* 상단 헤더 및 탭 전환 버튼 (maxWidth를 540px로 좁혀서 비율 맞춤) */}
+      <header style={{ textAlign: 'center', marginBottom: '12px', width: '100%', maxWidth: '540px', boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#0369a1', fontSize: '11px', fontWeight: 'bold' }}>
-            <Hand size={13} /> KSL DETECTOR
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#0369a1', fontSize: '12px', fontWeight: 'bold' }}>
+            <Hand size={14} /> KSL DETECTOR
           </div>
           <div style={{ display: 'flex', gap: '6px' }}>
             <button 
               onClick={() => setActiveTab('detector')}
-              style={{ backgroundColor: activeTab === 'detector' ? '#0284c7' : '#f1f5f9', color: activeTab === 'detector' ? '#fff' : '#475569', border: '1px solid #cbd5e1', padding: '5px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
+              style={{ backgroundColor: activeTab === 'detector' ? '#0284c7' : '#f1f5f9', color: activeTab === 'detector' ? '#fff' : '#475569', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
               번역기 화면
             </button>
             <button 
               onClick={() => setActiveTab('feedback')}
-              style={{ backgroundColor: activeTab === 'feedback' ? '#0284c7' : '#f1f5f9', color: activeTab === 'feedback' ? '#fff' : '#475569', border: '1px solid #cbd5e1', padding: '5px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
-              💬 평가 피드백 남기기
+              style={{ backgroundColor: activeTab === 'feedback' ? '#0284c7' : '#f1f5f9', color: activeTab === 'feedback' ? '#fff' : '#475569', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}>
+              💬 평가 남기기
+            </button>
+            <button 
+              onClick={() => setActiveTab('admin')}
+              style={{ backgroundColor: activeTab === 'admin' ? '#0f172a' : '#f1f5f9', color: activeTab === 'admin' ? '#fff' : '#475569', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Lock size={11} /> 관리자 모드
             </button>
           </div>
         </div>
         <h1 style={{ fontSize: '20px', fontWeight: '800', margin: 0, color: '#0f172a', letterSpacing: '-0.5px' }}>
-          {activeTab === 'detector' ? 'DB 통합 수어 ➔ 텍스트 번역기' : '프로젝트 평가 및 피드백'}
+          {activeTab === 'detector' && 'DB 통합 수어 ➔ 텍스트 번역기'}
+          {activeTab === 'feedback' && '프로젝트 평가 및 피드백'}
+          {activeTab === 'admin' && '🔒 관리자 피드백 대시보드'}
         </h1>
       </header>
 
-      {/* 탭 1: 실시간 번역기 화면 */}
+      {/* 탭 1: 실시간 번역기 화면 (maxWidth: 540px, 4:3 비율에 가까운 높이 설정으로 클로즈업 해제) */}
       {activeTab === 'detector' && (
         <>
-          <div style={{ position: 'relative', width: '100%', maxWidth: '520px', height: '240px', backgroundColor: '#f8fafc', borderRadius: '14px', overflow: 'hidden', border: '1px solid #e2e8f0', marginBottom: '10px', boxSizing: 'border-box', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+          <div style={{ position: 'relative', width: '100%', maxWidth: '540px', height: '380px', backgroundColor: '#f8fafc', borderRadius: '14px', overflow: 'hidden', border: '1px solid #e2e8f0', marginBottom: '12px', boxSizing: 'border-box', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
             <video ref={videoRef} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />
             <canvas ref={canvasRef} width={640} height={480} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }} />
 
             {!isCameraActive && (
               <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc' }}>
-                <Video size={36} style={{ color: '#94a3b8', marginBottom: '8px' }} />
-                <button onClick={startCamera} style={{ backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 4px rgba(2,132,199,0.2)' }}>
+                <Video size={40} style={{ color: '#94a3b8', marginBottom: '8px' }} />
+                <button onClick={startCamera} style={{ backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '12px 24px', borderRadius: '10px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 4px rgba(2,132,199,0.2)' }}>
                   <Camera size={18} /> 카메라 켜기
                 </button>
               </div>
             )}
           </div>
 
-          <div style={{ width: '100%', maxWidth: '520px', height: '70px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '8px 16px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', marginBottom: '10px', boxSizing: 'border-box', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+          <div style={{ width: '100%', maxWidth: '540px', height: '75px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '10px 16px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', marginBottom: '12px', boxSizing: 'border-box', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
             <div style={{ fontSize: '11px', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '2px', fontWeight: '500' }}>
-              <MessageSquare size={12} /> 실시간 번역 결과
+              <MessageSquare size={13} /> 실시간 번역 결과
             </div>
 
             {detectedText ? (
               <div>
-                <div style={{ fontSize: '22px', fontWeight: '800', color: '#0284c7', lineHeight: '1.2' }}>
+                <div style={{ fontSize: '24px', fontWeight: '800', color: '#0284c7', lineHeight: '1.2' }}>
                   "{detectedText}"
                 </div>
-                <div style={{ fontSize: '10px', color: '#64748b', marginTop: '1px' }}>
+                <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
                   감지된 동작: {detectedGestureName}
                 </div>
               </div>
             ) : (
-              <div style={{ color: '#64748b', fontSize: '12px', fontWeight: '500' }}>
+              <div style={{ color: '#64748b', fontSize: '13px', fontWeight: '500' }}>
                 {isLoadingDB ? 'Supabase DB 데이터 로딩 중...' : dbError ? `DB 에러: ${dbError}` : '수어 동작을 취해 보세요!'}
               </div>
             )}
           </div>
 
-          <div style={{ width: '100%', maxWidth: '520px', padding: '6px 12px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '11px', color: '#475569', textAlign: 'center', boxSizing: 'border-box', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '1px', color: '#0369a1', fontWeight: 'bold' }}>
-              <Database size={11} /> DB 연동 완료: 총 {gesturesList.length}개 동작 등록됨
+          <div style={{ width: '100%', maxWidth: '540px', padding: '8px 12px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '11px', color: '#475569', textAlign: 'center', boxSizing: 'border-box', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '2px', color: '#0369a1', fontWeight: 'bold' }}>
+              <Database size={12} /> DB 연동 완료: 총 {gesturesList.length}개 동작 등록됨
             </div>
             • 강아지, 화장실, 없다, 엄마, 예쁘다 등 실시간 인식 중
           </div>
@@ -484,22 +507,22 @@ export default function App() {
 
       {/* 탭 2: 피드백 수집 폼 화면 */}
       {activeTab === 'feedback' && (
-        <div style={{ width: '100%', maxWidth: '520px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '20px', boxSizing: 'border-box', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+        <div style={{ width: '100%', maxWidth: '540px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '24px', boxSizing: 'border-box', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
           {submitSuccess ? (
-            <div style={{ textAlign: 'center', padding: '30px 0' }}>
-              <CheckCircle size={48} style={{ color: '#10b981', marginBottom: '12px' }} />
-              <h3 style={{ fontSize: '18px', fontWeight: 'bold', margin: '0 0 8px 0' }}>소중한 피드백 감사합니다!</h3>
+            <div style={{ textAlign: 'center', padding: '40px 0' }}>
+              <CheckCircle size={52} style={{ color: '#10b981', marginBottom: '12px' }} />
+              <h3 style={{ fontSize: '20px', fontWeight: 'bold', margin: '0 0 8px 0' }}>소중한 피드백 감사합니다!</h3>
               <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 20px 0' }}>제출해주신 평가 내용이 DB에 성공적으로 저장되었습니다.</p>
               <button 
                 onClick={() => { setSubmitSuccess(false); setComments(''); setEvaluatorName(''); }}
-                style={{ backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>
+                style={{ backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer' }}>
                 추가 피드백 작성하기
               </button>
             </div>
           ) : (
-            <form onSubmit={handleFeedbackSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <form onSubmit={handleFeedbackSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>
                   평가자 이름 / 소속 (팀명) *
                 </label>
                 <input 
@@ -507,15 +530,15 @@ export default function App() {
                   value={evaluatorName}
                   onChange={(e) => setEvaluatorName(e.target.value)}
                   placeholder="예: 김평가 / 3조 심사위원"
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box', outline: 'none' }}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box', outline: 'none' }}
                 />
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>
                   종합 만족도 점수
                 </label>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                   {[1, 2, 3, 4, 5].map((num) => (
                     <button
                       type="button"
@@ -523,7 +546,7 @@ export default function App() {
                       onClick={() => setRating(num)}
                       style={{
                         flex: 1,
-                        padding: '8px 0',
+                        padding: '10px 0',
                         borderRadius: '8px',
                         border: rating === num ? '2px solid #0284c7' : '1px solid #cbd5e1',
                         backgroundColor: rating === num ? '#e0f2fe' : '#fff',
@@ -532,9 +555,9 @@ export default function App() {
                         fontSize: '13px',
                         cursor: 'pointer',
                         display: 'flex',
-                        alignItem: 'center',
+                        alignItems: 'center',
                         justifyContent: 'center',
-                        gap: '2px'
+                        gap: '4px'
                       }}>
                       <Star size={14} fill={rating === num ? '#0284c7' : 'none'} /> {num}점
                     </button>
@@ -543,27 +566,41 @@ export default function App() {
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>
                   개선점 및 심사평
                 </label>
                 <textarea 
                   value={comments}
                   onChange={(e) => setComments(e.target.value)}
                   placeholder="서비스의 장점이나 보완해야 할 점을 자유롭게 적어주세요."
-                  rows={3}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box', outline: 'none', resize: 'none' }}
+                  rows={4}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box', outline: 'none', resize: 'none' }}
                 />
               </div>
 
               <button 
                 type="submit"
                 disabled={isSubmitting}
-                style={{ backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '10px', borderRadius: '8px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', marginTop: '4px' }}>
+                style={{ backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '12px', borderRadius: '8px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', marginTop: '6px' }}>
                 <Send size={16} /> {isSubmitting ? '저장 중...' : '피드백 제출하기'}
               </button>
             </form>
           )}
         </div>
+      )}
+
+      {/* 탭 3: 관리자 컴포넌트 호출 */}
+      {activeTab === 'admin' && (
+        <AdminFeedback 
+          adminPassword={adminPassword}
+          setAdminPassword={setAdminPassword}
+          isAdminAuthenticated={isAdminAuthenticated}
+          setIsAdminAuthenticated={setIsAdminAuthenticated}
+          feedbackList={feedbackList}
+          setFeedbackList={setFeedbackList}
+          isLoadingFeedback={isLoadingFeedback}
+          setIsLoadingFeedback={setIsLoadingFeedback}
+        />
       )}
 
     </div>
