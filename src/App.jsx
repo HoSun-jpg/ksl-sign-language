@@ -192,7 +192,7 @@ export default function App() {
 
       const avgY = (hand1[0].y + hand2[0].y) / 2;
 
-      // ① [강아지] - 양손이 머리 부근(Y < 0.48)에 있고 손바닥이 펴져 있는(보이는) 상태
+      // ① [강아지]
       const h1NearHead = hand1[0].y < 0.48;
       const h2NearHead = hand2[0].y < 0.48;
       const h1Open = countExtendedFingers(hand1) >= 3;
@@ -280,20 +280,20 @@ export default function App() {
       const middleTip = hand[12];
       const extendedCount = countExtendedFingers(hand);
 
-      // ① [화장실] - 엄지·검지 C 모양 + 중지·약지·새끼 W 모양
+      // ① [화장실]
       if (isRestroomGesture(hand)) {
         const rule = getDbRule('restroom');
         return { text: rule?.text || '화장실', gesture: rule?.gesture_name || '엄지·검지 C + 중지·약지·새끼 W' };
       }
 
-      // ② [엄마] - 팔자주름 부근 대기
+      // ② [엄마]
       const isNearNasolabial = indexTip.y > 0.38 && indexTip.y < 0.68;
       if (isNearNasolabial && isPinkyOnly(hand)) {
         const rule = getDbRule('mom');
         return { text: rule?.text || '엄마', gesture: rule?.gesture_name || '팔자주름 부근 대기' };
       }
 
-      // ③ [예쁘다] - 검지만 펴고 볼 돌리기
+      // ③ [예쁘다]
       if (isIndexOnly(hand) && indexTip.y > 0.25 && indexTip.y < 0.70) {
         if (prevIndexXRef.current !== null) {
           const deltaX = indexTip.x - prevIndexXRef.current;
@@ -314,13 +314,13 @@ export default function App() {
         prettyMoveDirRef.current = null;
       }
 
-      // ④ [없다] - 검지와 중지 펴고 턱 근처 대기
+      // ④ [없다]
       if (isIndexAndMiddleOnly(hand) && indexTip.y > 0.55 && indexTip.y < 0.80) {
         const rule = getDbRule('none');
         return { text: rule?.text || '없다', gesture: rule?.gesture_name || '검지/중지 펴고 턱에 대기' };
       }
 
-      // ⑤ [남동생] & [산] - 중지만 세우기
+      // ⑤ [남동생] & [산]
       if (isMiddleFingerOnly(hand)) {
         if (prevMiddleYRef.current !== null) {
           const deltaY = middleTip.y - prevMiddleYRef.current;
@@ -338,19 +338,19 @@ export default function App() {
         prevMiddleYRef.current = null;
       }
 
-      // ⑥ [괜찮아] - 새끼손가락만 펴서 턱 근처
+      // ⑥ [괜찮아]
       if (isPinkyOnly(hand) && pinkyTipY > 0.58 && pinkyTipY < 0.80) {
         const rule = getDbRule('fine') || getDbRule('okay');
         return { text: rule?.text || '괜찮아', gesture: rule?.gesture_name || '새끼손가락 턱에 대기' };
       }
 
-      // ⑦ [좋습니다!] - 한 손 엄지 척
+      // ⑦ [좋습니다!]
       if (isThumbUp(hand)) {
         const rule = getDbRule('like');
         return { text: rule?.text || '좋습니다!', gesture: rule?.gesture_name || '한 손 엄지 척' };
       }
 
-      // ⑧ [미안합니다!] - 이마 부근
+      // ⑧ [미안합니다!]
       const ruleSorry = getDbRule('sorry');
       if (wristY < 0.45 && (isOkShape(hand) || extendedCount <= 3 || isFourFingersClosed(hand))) {
         return { text: ruleSorry?.text || '미안합니다!', gesture: ruleSorry?.gesture_name || '이마에 손대기' };
@@ -378,7 +378,7 @@ export default function App() {
           landmarks.forEach((lm) => {
             ctx.beginPath();
             ctx.arc((1 - lm.x) * canvas.width, lm.y * canvas.height, 4, 0, 2 * Math.PI);
-            ctx.fillStyle = '#38bdf8';
+            ctx.fillStyle = '#0284c7';
             ctx.fill();
           });
         });
@@ -401,44 +401,48 @@ export default function App() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', color: '#f8fafc', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '32px 24px', fontFamily: 'sans-serif' }}>
-      <header style={{ textAlign: 'center', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: '#38bdf8', marginBottom: '8px', fontSize: '13px', fontWeight: 'bold' }}>
-          <Hand size={18} /> KOREAN SIGN LANGUAGE DETECTOR
+    <div style={{ width: '100%', minHeight: '100vh', backgroundColor: '#ffffff', color: '#1e293b', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '16px', fontFamily: 'sans-serif', boxSizing: 'border-box' }}>
+      
+      {/* 헤더 */}
+      <header style={{ textAlign: 'center', marginBottom: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', color: '#0369a1', marginBottom: '2px', fontSize: '12px', fontWeight: 'bold' }}>
+          <Hand size={14} /> KOREAN SIGN LANGUAGE DETECTOR
         </div>
-        <h1 style={{ fontSize: '28px', fontWeight: '800', margin: 0 }}>DB 통합 수어 ➔ 텍스트 번역기</h1>
+        <h1 style={{ fontSize: '22px', fontWeight: '800', margin: 0, color: '#0f172a', letterSpacing: '-0.5px' }}>DB 통합 수어 ➔ 텍스트 번역기</h1>
       </header>
 
-      <div style={{ position: 'relative', width: '640px', height: '480px', backgroundColor: '#1e293b', borderRadius: '16px', overflow: 'hidden', border: '2px solid #334155', marginBottom: '24px' }}>
+      {/* 카메라 및 비디오 영역 */}
+      <div style={{ position: 'relative', width: '100%', maxWidth: '520px', height: '240px', backgroundColor: '#f8fafc', borderRadius: '14px', overflow: 'hidden', border: '1px solid #e2e8f0', marginBottom: '12px', boxSizing: 'border-box', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
         <video ref={videoRef} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />
         <canvas ref={canvasRef} width={640} height={480} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }} />
 
         {!isCameraActive && (
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0f172aee' }}>
-            <Video size={48} style={{ color: '#64748b', marginBottom: '12px' }} />
-            <button onClick={startCamera} style={{ backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '14px 28px', borderRadius: '12px', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Camera size={20} /> 카메라 켜기
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc' }}>
+            <Video size={36} style={{ color: '#94a3b8', marginBottom: '8px' }} />
+            <button onClick={startCamera} style={{ backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 4px rgba(2,132,199,0.2)' }}>
+              <Camera size={18} /> 카메라 켜기
             </button>
           </div>
         )}
       </div>
 
-      <div style={{ width: '640px', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '16px', padding: '24px', textAlign: 'center', minHeight: '130px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-        <div style={{ fontSize: '14px', color: '#94a3b8', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', marginBottom: '8px' }}>
-          <MessageSquare size={16} /> 실시간 번역 결과
+      {/* 실시간 번역 결과 박스 (높이 고정으로 흔들림 완전 방지) */}
+      <div style={{ width: '100%', maxWidth: '520px', height: '75px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '10px 16px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', marginBottom: '12px', boxSizing: 'border-box', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+        <div style={{ fontSize: '11px', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '2px', fontWeight: '500' }}>
+          <MessageSquare size={13} /> 실시간 번역 결과
         </div>
 
         {detectedText ? (
           <div>
-            <div style={{ fontSize: '36px', fontWeight: '800', color: '#38bdf8', marginBottom: '4px' }}>
+            <div style={{ fontSize: '24px', fontWeight: '800', color: '#0284c7', lineHeight: '1.2' }}>
               "{detectedText}"
             </div>
-            <div style={{ fontSize: '13px', color: '#64748b' }}>
+            <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
               감지된 동작: {detectedGestureName}
             </div>
           </div>
         ) : (
-          <div style={{ color: '#475569', fontSize: '15px' }}>
+          <div style={{ color: '#64748b', fontSize: '13px', fontWeight: '500' }}>
             {isLoadingDB 
               ? 'Supabase DB 데이터 로딩 중...' 
               : dbError 
@@ -448,12 +452,14 @@ export default function App() {
         )}
       </div>
 
-      <div style={{ width: '640px', marginTop: '16px', padding: '12px 16px', backgroundColor: '#0f172a', borderRadius: '10px', border: '1px solid #334155', fontSize: '13px', color: '#94a3b8' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px', color: '#38bdf8', fontWeight: 'bold' }}>
-          <Database size={14} /> DB 연동 완료: 총 {gesturesList.length}개 동작 등록됨
+      {/* DB 연동 안내 하단 바 */}
+      <div style={{ width: '100%', maxWidth: '520px', padding: '8px 12px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '11px', color: '#475569', textAlign: 'center', boxSizing: 'border-box', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '2px', color: '#0369a1', fontWeight: 'bold' }}>
+          <Database size={12} /> DB 연동 완료: 총 {gesturesList.length}개 동작 등록됨
         </div>
-        • [강아지] ➔ 양손 손바닥 보이게 머리 위에 올리기 | [화장실] ➔ C+W 모양 | [없다] ➔ 검지/중지 턱에 대기
+        • 강아지, 화장실, 없다, 엄마, 예쁘다 등 실시간 인식 중
       </div>
+
     </div>
   );
 }
