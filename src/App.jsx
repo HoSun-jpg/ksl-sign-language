@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
-import { Camera, Hand, MessageSquare, Video, Database, Send, CheckCircle, Star, Lock } from 'lucide-react';
+import { Camera, Hand, MessageSquare, Video, Database, Send, CheckCircle, Star, Lock, Clock } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import AdminFeedback from './AdminFeedback';
 
@@ -14,6 +14,9 @@ export default function App() {
   const [detectedText, setDetectedText] = useState('');
   const [detectedGestureName, setDetectedGestureName] = useState('');
   
+  // 최근 번역 기록 상태
+  const [historyList, setHistoryList] = useState([]);
+
   const [gesturesList, setGesturesList] = useState([]);
   const [isLoadingDB, setIsLoadingDB] = useState(true);
   const [dbError, setDbError] = useState('');
@@ -46,6 +49,7 @@ export default function App() {
   const prettyMoveDirRef = useRef(null);
   const prevMiddleYRef = useRef(null);
   const clearTimerRef = useRef(null);
+  const lastAddedTextRef = useRef('');
 
   // 1. Supabase DB 데이터 로드 (수어 동작)
   useEffect(() => {
@@ -151,15 +155,6 @@ export default function App() {
     const isRingClosed = lm[16].y > lm[14].y;
     const isPinkyClosed = lm[20].y > lm[18].y;
     return isIndexUp && isMiddleUp && isRingClosed && isPinkyClosed;
-  };
-
-  const isRestroomGesture = (lm) => {
-    const thumbIndexDist = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y);
-    const isC_Shape = thumbIndexDist > 0.03 && thumbIndexDist < 0.20;
-    const isMiddleUp = lm[12].y < lm[10].y;
-    const isRingUp = lm[16].y < lm[14].y;
-    const isPinkyUp = lm[20].y < lm[18].y;
-    return isC_Shape && isMiddleUp && isRingUp && isPinkyUp;
   };
 
   const countExtendedFingers = (lm) => {
@@ -291,11 +286,6 @@ export default function App() {
       const middleTip = hand[12];
       const extendedCount = countExtendedFingers(hand);
 
-      if (isRestroomGesture(hand)) {
-        const rule = getDbRule('restroom');
-        return { text: rule?.text || '화장실', gesture: rule?.gesture_name || '엄지·검지 C + 중지·약지·새끼 W' };
-      }
-
       const isNearNasolabial = indexTip.y > 0.38 && indexTip.y < 0.68;
       if (isNearNasolabial && isPinkyOnly(hand)) {
         const rule = getDbRule('mom');
@@ -388,10 +378,19 @@ export default function App() {
           setDetectedText(result.text);
           setDetectedGestureName(result.gesture);
 
+          // 최근 번역 기록 추가 (중복 방지 및 현재 시간 기록)
+          if (lastAddedTextRef.current !== result.text) {
+            lastAddedTextRef.current = result.text;
+            const now = new Date();
+            const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            setHistoryList(prev => [{ text: result.text, time: timeStr }, ...prev.slice(0, 9)]);
+          }
+
           if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
           clearTimerRef.current = setTimeout(() => {
             setDetectedText('');
             setDetectedGestureName('');
+            lastAddedTextRef.current = '';
           }, 1500);
         }
       }
@@ -425,9 +424,31 @@ export default function App() {
   };
 
   return (
-    <div style={{ width: '100%', minHeight: '100vh', backgroundColor: '#ffffff', color: '#1e293b', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '16px 20px', fontFamily: 'sans-serif', boxSizing: 'border-box' }}>
+    <div style={{ width: '100%', minHeight: '100vh', backgroundColor: '#ffffff', color: '#1e293b', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '16px 20px', fontFamily: 'sans-serif', boxSizing: 'border-box', position: 'relative' }}>
       
-      {/* 상단 헤더 및 탭 전환 버튼 (maxWidth를 540px로 좁혀서 비율 맞춤) */}
+      {/* 왼쪽 빈공간에 고정되는 최근 번역 기록 패널 (PC/태블릿 가로 모드 시 여백 활용) */}
+      <div style={{ position: 'fixed', left: '24px', top: '100px', width: '220px', maxHeight: '420px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '14px', display: 'flex', flexDirection: 'column', boxSizing: 'border-box', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', zIndex: 10 }}>
+        <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px', borderBottom: '1px solid #e2e8f0', paddingBottom: '6px' }}>
+          <Clock size={14} style={{ color: '#0284c7' }} /> 최근 번역 기록
+        </div>
+
+        <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '340px' }}>
+          {historyList.length === 0 ? (
+            <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '11px', padding: '30px 0' }}>
+              번역 기록이 없습니다.<br />수어 동작을 취해 보세요!
+            </div>
+          ) : (
+            historyList.map((item, idx) => (
+              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '12px' }}>
+                <span style={{ fontWeight: 'bold', color: '#0284c7' }}>{item.text}</span>
+                <span style={{ fontSize: '10px', color: '#64748b' }}>{item.time}</span>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* 상단 헤더 및 탭 전환 버튼 */}
       <header style={{ textAlign: 'center', marginBottom: '12px', width: '100%', maxWidth: '540px', boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#0369a1', fontSize: '12px', fontWeight: 'bold' }}>
@@ -458,7 +479,7 @@ export default function App() {
         </h1>
       </header>
 
-      {/* 탭 1: 실시간 번역기 화면 (maxWidth: 540px, 4:3 비율에 가까운 높이 설정으로 클로즈업 해제) */}
+      {/* 탭 1: 실시간 번역기 화면 (기존 원본 레이아웃 완벽 유지) */}
       {activeTab === 'detector' && (
         <>
           <div style={{ position: 'relative', width: '100%', maxWidth: '540px', height: '380px', backgroundColor: '#f8fafc', borderRadius: '14px', overflow: 'hidden', border: '1px solid #e2e8f0', marginBottom: '12px', boxSizing: 'border-box', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
@@ -500,7 +521,7 @@ export default function App() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '2px', color: '#0369a1', fontWeight: 'bold' }}>
               <Database size={12} /> DB 연동 완료: 총 {gesturesList.length}개 동작 등록됨
             </div>
-            • 강아지, 화장실, 없다, 엄마, 예쁘다 등 실시간 인식 중
+            • 강아지, 사랑합니다, 안녕하세요 등 실시간 인식 중
           </div>
         </>
       )}
